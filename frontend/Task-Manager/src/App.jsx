@@ -20,7 +20,7 @@ import TaskTimeLogsPage from './pages/User/TaskTimeLogsPage';
 import TaskCalendar from './pages/Admin/TaskCalendar';
 import SharedSheet from './pages/Admin/SharedSheet'; // Add this line
 import DailyLogChart from './pages/Admin/DailyLogChart';
-import UserDailyLogChart from './pages/User/userDailyLogChart';
+import UserDailyLogChart from './pages/User/UserDailyLogChart';
 import UserProvider, { UserContext } from './context/userContext';
 import { Toaster } from 'react-hot-toast';
 
