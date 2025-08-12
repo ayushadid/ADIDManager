@@ -45,8 +45,8 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Start server — accessible via LAN (same Wi-Fi)
 const PORT = process.env.PORT || 5000;
-const HOST = "0.0.0.0"; // Make server accessible on your LAN (192.168.x.x)
 
-app.listen(PORT, HOST, () => {
-  console.log(`🚀 Server running at http://${HOST}:${PORT}`);
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
 });
+
