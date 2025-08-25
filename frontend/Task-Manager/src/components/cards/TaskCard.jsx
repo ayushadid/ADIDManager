@@ -188,7 +188,7 @@ const TaskCard = ({
           }`}
         >
           <p className="text-base font-semibold text-gray-800 mb-1">{title}</p>
-          <p className="text-sm text-gray-600 mb-2">{description}</p>
+          <p className="text-sm text-gray-600 mb-2 truncate-description">{description}</p>
           <p className="text-sm text-gray-700 mb-2">
             Task Done:{' '}
             <span className="font-medium text-gray-900">

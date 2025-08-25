@@ -1,5 +1,5 @@
-const express=require("express");
-const {protect,adminOnly}=require("../middlewares/authMiddleware");
+const express = require("express");
+const { protect, adminOnly } = require("../middlewares/authMiddleware");
 const {
     getDashboardData,
     getUserDashboardData,
@@ -10,32 +10,53 @@ const {
     deleteTask,
     updateTaskStatus,
     updateTaskChecklist,
-    getTasksForSpecificUser, // Make sure to import it
+    getTasksForSpecificUser,
+
     addRemarkToTask,
     startTimer,
     stopTimer,
-    getActiveTimer, // Already there
+    getActiveTimer,
     getTaskTimeLogs,
+    getUserBoardData,
 } = require("../controllers/taskController");
-const router=express.Router();
+const router = express.Router();
 
-router.get("/dashboard-data",protect,getDashboardData);
-router.get("/user-dashboard-data",protect, getUserDashboardData);
-router.get("/",protect,getTasks);
-router.get("/user/:userId", protect, adminOnly, getTasksForSpecificUser); // Add this line
-router.get("/:id",protect,getTaskById);
-router.post("/",protect,adminOnly,createTask);
-router.put("/:id",protect,adminOnly,updateTask);
-router.delete("/:id",protect,adminOnly,deleteTask);
-router.put("/:id/status",protect,updateTaskStatus);
-router.put("/:id/todo",protect,updateTaskChecklist);
+// --- Static Routes (must be defined before dynamic routes) ---
+
+// Main route for getting all tasks (or filtered tasks)
+router.get("/", protect, getTasks);
+
+// Dashboard and Board routes
+router.get("/dashboard-data", protect, getDashboardData);
+router.get("/user-dashboard-data", protect, getUserDashboardData);
+router.get("/user-board", protect, getUserBoardData);
+
+
+// --- Dynamic Routes (with parameters like :id, :userId, :taskId) ---
+
+// Routes for a specific user's tasks (admin only)
+router.get("/user/:userId", protect, adminOnly, getTasksForSpecificUser);
+
+// Routes for starting/stopping timers
+router.post("/:taskId/timelogs/start", protect, startTimer);
+router.put("/:taskId/timelogs/:timeLogId/stop", protect, stopTimer);
+router.get("/:taskId/timelogs/active", protect, getActiveTimer);
+router.get("/:taskId/timelogs", protect, getTaskTimeLogs);
+
+// Routes for adding remarks
 router.post("/:id/remarks", protect, adminOnly, addRemarkToTask);
 
-router.post("/:taskId/timelogs/start", protect, startTimer); // Start timer (user or admin)
-router.put("/:taskId/timelogs/:timeLogId/stop", protect, stopTimer); // Stop timer (owner or admin)
-router.get("/:taskId/timelogs/active", protect, getActiveTimer); // For frontend to check active timer
+// Routes for updating status and checklist
+router.put("/:id/status", protect, updateTaskStatus);
+router.put("/:id/todo", protect, updateTaskChecklist);
 
-// NEW ROUTE: Get all time logs for a task
-router.get("/:taskId/timelogs", protect, getTaskTimeLogs); // <-- Add this route
+// General CRUD routes for a single task. These should come last.
+router.get("/:id", protect, getTaskById);
+router.put("/:id", protect, adminOnly, updateTask);
+router.delete("/:id", protect, adminOnly, deleteTask);
 
-module.exports=router;
+// Route for creating a new task
+router.post("/", protect, adminOnly, createTask);
+
+
+module.exports = router;

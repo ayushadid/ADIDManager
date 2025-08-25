@@ -1,6 +1,8 @@
 const Task=require("../models/Task");
 const TimeLog=require("../models/TimeLog");
-
+const mongoose = require('mongoose');
+const Notification = require('../models/Notification');
+const User = require("../models/User");
 // @desc Get active timer for a specific task and user
 // @route GET /api/tasks/:taskId/timelogs/active
 // @access Private (Assigned User or Admin)
@@ -41,6 +43,57 @@ const getActiveTimer = async (req, res) => {
         res.status(500).json({ message: "Server Error", error: error.message });
     }
 };
+
+const getUserBoardData = async (req, res) => {
+    try {
+        const userId = req.user._id;
+
+        // 1. Find all active timelogs for the current user to identify tasks with a running timer.
+        const activeTimeLogs = await TimeLog.find({ user: userId, endTime: null }).select('task');
+        const activeTaskIds = new Set(activeTimeLogs.map(log => log.task.toString()));
+
+        // 2. Find all tasks assigned to the user, populating the project details.
+        const userTasks = await Task.find({ assignedTo: userId })
+            .populate('project', 'name')
+            .sort({ createdAt: 1 });
+
+        // 3. Group the tasks by project.
+        const projectsMap = new Map();
+        userTasks.forEach(task => {
+            if (!task.project) return; // Skip tasks without a project
+
+            const projectId = task.project._id.toString();
+            
+            // Add the dynamic flag for the timer status
+            const taskWithTimerStatus = {
+                ...task.toObject(),
+                isTimerActiveForCurrentUser: activeTaskIds.has(task._id.toString())
+            };
+            
+            if (!projectsMap.has(projectId)) {
+                // If this is the first task for this project, initialize the project in our map
+                projectsMap.set(projectId, {
+                    _id: projectId,
+                    name: task.project.name,
+                    tasks: [taskWithTimerStatus]
+                });
+            } else {
+                // Otherwise, just add the task to the existing project's task list
+                projectsMap.get(projectId).tasks.push(taskWithTimerStatus);
+            }
+        });
+
+        // 4. Convert the map to an array for the final response.
+        const boardData = Array.from(projectsMap.values());
+
+        res.json(boardData);
+
+    } catch (error) {
+        console.error("Error fetching user board data:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
 
 // @desc Get all time logs for a specific task
 // @route GET /api/tasks/:taskId/timelogs
@@ -182,149 +235,145 @@ const stopTimer = async (req, res) => {
 //@route GET /api/tasks/
 //@access Private
 // controllers/taskController.js
-
-// controllers/taskController.js
-
-const getTasks = async (req, res) => {
-  try {
-    // 1. Get all filters from the query, including the new 'assignedUserId'
-    const { 
-        status, 
-        projectId, 
-        dueDate,
-        createdDate,
-        isOverdue,
-        assignedUserId // New parameter for user dropdown filter
-    } = req.query;
-    
-    let filter = {};
-    const isUserAdmin = req.user.role === "admin";
-
-    // 2. Apply assignment filter based on user role and selection
-    if (isUserAdmin) {
-        // If an admin sends a specific user ID from the dropdown, filter by it.
-        if (assignedUserId && assignedUserId !== 'all') {
-            filter.assignedTo = assignedUserId;
-        }
-        // If assignedUserId is 'all' or not present, the filter remains empty for this field, showing all tasks.
-    } else {
-        // Non-admins can ONLY EVER see their own tasks, for security.
-        filter.assignedTo = req.user._id;
-    }
-
-    // Base project filter
-    if (projectId) filter.project = projectId;
-
-    // Define 'today' at the start for reuse
+// Add this helper function above your getTasks function
+const getSummaryCounts = async (filter) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Prioritize the 'isOverdue' filter over the standard 'status' filter
-    if (isOverdue === 'true') {
-        filter.status = { $ne: 'Completed' }; // Not equal to 'Completed'
-        filter.dueDate = { $lt: today };      // Due date is in the past
-    } else {
-        // Apply status filter only if 'isOverdue' is not requested
-        if (status) {
-            filter.status = status;
-        }
-    }
-
-    // Combine with specific date filters if they exist
-    if (dueDate && isOverdue !== 'true') {
-      const targetDueDate = new Date(dueDate);
-      filter.dueDate = { 
-          $gte: new Date(targetDueDate.setHours(0, 0, 0, 0)), 
-          $lte: new Date(targetDueDate.setHours(23, 59, 59, 999)) 
-      };
-    }
-
-    if (createdDate) {
-      const targetCreatedDate = new Date(createdDate);
-      filter.createdAt = { 
-          $gte: new Date(targetCreatedDate.setHours(0, 0, 0, 0)), 
-          $lte: new Date(targetCreatedDate.setHours(23, 59, 59, 999)) 
-      };
-    }
-
-    const populateOptions = [
-      { path: "assignedTo", select: "name email profileImageUrl" },
-      { path: "project", select: "name" },
-    ];
-    if (isUserAdmin) {
-      populateOptions.push({
-        path: "remarks.madeBy",
-        select: "name email profileImageUrl",
-      });
-    }
-
-    const tasks = await Task.find(filter)
-      .populate(populateOptions)
-      .sort({ createdAt: -1 });
-
-    // Process tasks to add the dynamic 'isOverdue' flag to each one
-    const processedTasks = await Promise.all(
-      tasks.map(async (task) => {
-        const taskObject = task.toObject();
-
-        const completedCount = task.todoChecklist.filter(
-          (item) => item.completed
-        ).length;
-        taskObject.completedTodoCount = completedCount;
-
-        const isTaskOverdue = 
-            task.status !== 'Completed' &&
-            task.dueDate &&
-            new Date(task.dueDate) < today;
-
-        taskObject.isOverdue = isTaskOverdue;
-
-        if (!isUserAdmin) {
-          delete taskObject.remarks;
-        }
-        return taskObject;
-      })
-    );
-    
-    // 3. Update summary counts to respect the project and user filters
-    const baseFilterForCounts = {};
-    if (projectId) baseFilterForCounts.project = projectId;
-    
-    // Apply the same assignment logic to the summary counts
-    if (isUserAdmin) {
-        if (assignedUserId && assignedUserId !== 'all') {
-            baseFilterForCounts.assignedTo = assignedUserId;
-        }
-    } else {
-        baseFilterForCounts.assignedTo = req.user._id;
-    }
+    // Create a new filter for counts that doesn't include status-specific fields
+    const baseFilterForCounts = { ...filter };
+    delete baseFilterForCounts.status;
+    delete baseFilterForCounts.isOverdue;
+    delete baseFilterForCounts.dueDate;
 
     const allTasks = await Task.countDocuments(baseFilterForCounts);
     const pendingTasks = await Task.countDocuments({ ...baseFilterForCounts, status: "Pending" });
     const inProgressTasks = await Task.countDocuments({ ...baseFilterForCounts, status: "In Progress" });
     const completedTasks = await Task.countDocuments({ ...baseFilterForCounts, status: "Completed" });
-    
     const overdueTasks = await Task.countDocuments({ 
         ...baseFilterForCounts, 
         status: { $ne: 'Completed' }, 
         dueDate: { $lt: today } 
     });
 
-    res.json({
-      tasks: processedTasks,
-      statusSummary: {
-        all: allTasks,
-        pendingTasks,
-        inProgressTasks,
-        completedTasks,
-        overdueTasks,
-      },
-    });
+    return { all: allTasks, pendingTasks, inProgressTasks, completedTasks, overdueTasks };
+};
 
-  } catch (error) {
-    console.error("Error in getTasks:", error);
-    res.status(500).json({ message: "Server Error", error: error.message });
-  }
+
+const getTasks = async (req, res) => {
+    try {
+        // --- CHECKPOINT 1: See what the frontend is sending ---
+        console.log("---------- New Request Received ----------");
+        console.log("1. Received query params from frontend:", req.query);
+
+        const { 
+            status, projectId, dueDate, createdDate, isOverdue, assignedUserId, sortBy 
+        } = req.query;
+        
+        const isUserAdmin = req.user.role === "admin";
+        
+        // Build a single, reusable filter object for all queries
+        let baseFilter = {};
+        if (isUserAdmin) {
+            if (assignedUserId && assignedUserId !== 'all') {
+                baseFilter.assignedTo = new mongoose.Types.ObjectId(assignedUserId);
+            }
+        } else {
+            baseFilter.assignedTo = req.user._id;
+        }
+
+        if (projectId && projectId !== 'all') {
+            baseFilter.project = new mongoose.Types.ObjectId(projectId);
+        }
+        
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (isOverdue === 'true') {
+            baseFilter.status = { $ne: 'Completed' };
+            baseFilter.dueDate = { $lt: today };
+        } else if (status && status !== 'All') {
+            baseFilter.status = status;
+        }
+
+        if (dueDate && isOverdue !== 'true') {
+            const targetDueDate = new Date(dueDate);
+            baseFilter.dueDate = { 
+                $gte: new Date(targetDueDate.setHours(0, 0, 0, 0)), 
+                $lte: new Date(targetDueDate.setHours(23, 59, 59, 999)) 
+            };
+        }
+        if (createdDate) {
+            const targetCreatedDate = new Date(createdDate);
+            baseFilter.createdAt = { 
+                $gte: new Date(targetCreatedDate.setHours(0, 0, 0, 0)), 
+                $lte: new Date(targetCreatedDate.setHours(23, 59, 59, 999)) 
+            };
+        }
+
+        // --- CHECKPOINT 2: See the final filter object before the query ---
+        console.log("2. Constructed DB filter object:", JSON.stringify(baseFilter, null, 2));
+
+        let tasks = [];
+
+        if (sortBy === 'hours') {
+            // --- CHECKPOINT 3A: Confirming the 'Sort by Hours' path is taken ---
+            console.log("3. Sorting Method: By Hours (Aggregation)");
+
+            tasks = await Task.aggregate([
+                { $match: baseFilter },
+                { $lookup: { from: 'timelogs', localField: '_id', foreignField: 'task', as: 'timeLogs' }},
+                { $addFields: { totalDuration: { $sum: "$timeLogs.duration" } }},
+                { $sort: { totalDuration: -1, createdAt: -1 } },
+                { $lookup: { from: 'projects', localField: 'project', foreignField: 'id', as: 'project' } },
+                { $lookup: { from: 'users', localField: 'assignedTo', foreignField: '_id', as: 'assignedTo' } },
+                { $unwind: { path: "$project", preserveNullAndEmptyArrays: true } },
+            ]);
+
+        } else {
+            // --- CHECKPOINT 3B: Confirming the 'Default Sort' path is taken ---
+            console.log("3. Sorting Method: Default (by Most Recent)");
+
+            const populateOptions = [
+                { path: "assignedTo", select: "name email profileImageUrl" },
+                { path: "project", select: "name" },
+            ];
+            tasks = await Task.find(baseFilter)
+                .populate(populateOptions)
+                .sort({ createdAt: -1 });
+        }
+        
+        // --- CHECKPOINT 4: See how many tasks were found ---
+        console.log(`4. Found ${tasks.length} tasks in the database.`);
+        
+        // --- The rest of the function processes the results ---
+        const processedTasks = await Promise.all(
+            tasks.map(async (task) => {
+                const taskObject = task.toObject ? task.toObject() : task;
+                taskObject.completedTodoCount = (taskObject.todoChecklist || []).filter(item => item.completed).length;
+                const isTaskOverdue = 
+                    taskObject.status !== 'Completed' &&
+                    taskObject.dueDate &&
+                    new Date(taskObject.dueDate) < today;
+                taskObject.isOverdue = isTaskOverdue;
+                if (!isUserAdmin && taskObject.remarks) {
+                    delete taskObject.remarks;
+                }
+                return taskObject;
+            })
+        );
+        
+        const statusSummary = await getSummaryCounts(baseFilter);
+
+        res.json({
+            tasks: processedTasks,
+            statusSummary,
+        });
+
+    } catch (error) {
+        console.error(">>> FATAL ERROR in getTasks:", error);
+        res.status(500).json({ message: "Server Error", error: error.message });
+    }
 };
 // Add this new function to your module.exports
 // @desc Get tasks for a specific user (Admin only)
@@ -477,81 +526,122 @@ const getTaskById = async (req, res) => {
 //@route POST /api/tasks/
 //@access Private(admin)
 
-const createTask=async(req,res)=>{
-try{
-    const{
-        project,
-        title,
-        description,
-        priority,
-        dueDate,
-        assignedTo,
-        attachments,
-        todoChecklist,
-    }=req.body;
+// Make sure these are at the top of your controller file
+// Make sure these models are imported at the top of your controller file
 
-    if (!project) {
-      res.status(400);
-      throw new Error("Project ID is required");
-    }
-    if(!Array.isArray(assignedTo)){
-        return res
-            .status(400)
-            .json({message:"AssignedTo must be an array of userIds"})
-    }
 
-    const task=await Task.create({
-        project,
-        title,
-        description,
-        priority,
-        dueDate,
-        assignedTo,
-        createdBy:req.user._id,
-        todoChecklist,
-        attachments,
-    });
+const createTask = async (req, res) => {
+    try {
+        const {
+            project,
+            title,
+            description,
+            priority,
+            dueDate,
+            assignedTo,
+            attachments,
+            todoChecklist,
+        } = req.body;
 
-    res.status(201).json({message:"Task Created Successfully",task})
+        if (!project) {
+            res.status(400);
+            throw new Error("Project ID is required");
+        }
+        if (!Array.isArray(assignedTo)) {
+            return res
+                .status(400)
+                .json({ message: "AssignedTo must be an array of userIds" })
+        }
 
-    }catch(error){
-        res.status(500).json({message:"Server Error ",error:error.message});
+        const task = await Task.create({
+            project,
+            title,
+            description,
+            priority,
+            dueDate,
+            assignedTo,
+            createdBy: req.user._id,
+            todoChecklist,
+            attachments,
+        });
+        
+        const { io, userSocketMap } = req;
+
+        // --- START: Corrected Notification Logic ---
+        if (assignedTo && assignedTo.length > 0) {
+            for (const userId of assignedTo) {
+                // 1. Create and save the notification to the database
+                const newNotification = await Notification.create({
+                    recipient: userId,
+                    sender: req.user._id,
+                    message: `${req.user.name} assigned you a new task: "${title}"`,
+                    link: `/user/task-details/${task._id}`,
+                });
+
+                // 2. Populate the sender details to make it a complete object
+                const populatedNotification = await Notification.findById(newNotification._id)
+                    .populate('sender', 'name profileImageUrl');
+
+                // 3. Send the FULL, REAL notification object over the socket
+                const socketId = userSocketMap[userId];
+                if (socketId) {
+                    console.log(`Emitting REAL notification to user ${userId} on socket ${socketId}`);
+                    io.to(socketId).emit("notification", populatedNotification);
+                }
+            }
+        }
+        // --- END: Corrected Notification Logic ---
+        
+        res.status(201).json({ message: "Task Created Successfully", task })
+
+    } catch (error) {
+        console.error("Error creating task:", error);
+        res.status(500).json({ message: "Server Error ", error: error.message });
     }
 };
-
 //@desc Update Task Details
 //@route PUT /api/tasks/:id
 //@access PRIVATE
-const updateTask=async(req,res)=>{
-try{
-    const task= await Task.findById(req.params.id);
+const updateTask = async (req, res) => {
+    try {
+        const task = await Task.findById(req.params.id);
+        if (!task) return res.status(404).json({ message: "Task not found" });
 
-    if(!task) return res.status(404).json({message:"Task not found"});
-
-    task.title=req.body.title||task.title;
-    task.description=req.body.description||task.description;
-    task.priority=req.body.priority||task.priority;
-    task.dueDate=req.body.dueDate||task.dueDate;
-    task.todoChecklist=req.body.todoChecklist||task.todoChecklist;
-    task.attachments=req.body.attachments||task.attachments;
-    task.project = req.body.project || task.project;
-
-    if(req.body.assignedTo){
-        if(!Array.isArray(req.body.assignedTo)){
-            return res
-                .status(400)
-                .json({message:"assignedTo must be an array"});
+        // 3. FIXED: Sanitize the incoming checklist to prevent crashes
+        if (req.body.todoChecklist) {
+            req.body.todoChecklist = req.body.todoChecklist.map(item => {
+                if (item._id && !mongoose.Types.ObjectId.isValid(item._id)) {
+                    // This is a new item with a temporary ID, remove it
+                    return { text: item.text, completed: item.completed };
+                }
+                return item;
+            });
         }
-        task.assignedTo=req.body.assignedTo;
-    }
 
-    const updatedTask=await task.save();
-    await updatedTask.populate({ path: "project", select: "name" });
-    res.json({message:"Task updated successfully", updatedTask});
-    }catch(error){
-        res.status(500).json({message:"Server Error ",error:error.message});
+        task.title = req.body.title || task.title;
+        task.description = req.body.description || task.description;
+        task.priority = req.body.priority || task.priority;
+        task.dueDate = req.body.dueDate || task.dueDate;
+        task.todoChecklist = req.body.todoChecklist || task.todoChecklist;
+        task.attachments = req.body.attachments || task.attachments;
+        task.project = req.body.project || task.project;
+
+        if (req.body.assignedTo) {
+            if (!Array.isArray(req.body.assignedTo)) {
+                return res.status(400).json({ message: "assignedTo must be an array" });
+            }
+            task.assignedTo = req.body.assignedTo;
+        }
+
+        const updatedTask = await task.save();
+        await updatedTask.populate({ path: "project", select: "name" });
+        res.json({ message: "Task updated successfully", updatedTask });
+    } catch (error) {
+        console.error("Error in updateTask:", error);
+        res.status(500).json({ message: "Server Error", error: error.message });
     }
 };
+
 
 //@desc delete a task (admin only)
 //@route DELETE /api/tasks/:id
@@ -603,128 +693,168 @@ try{
 //@route PUT /api/tasks/:id/todo
 //@access PRIVATE
 const updateTaskChecklist = async (req, res) => {
-  try {
-    const { todoChecklist } = req.body;
-    const task = await Task.findById(req.params.id);
+    try {
+        let { todoChecklist } = req.body;
+        const task = await Task.findById(req.params.id);
 
-    if (!task) return res.status(404).json({ message: "Task not Found" });
+        if (!task) return res.status(404).json({ message: "Task not Found" });
 
-    // Authorization check (this is good)
-    if (!task.assignedTo.includes(req.user._id) && req.user.role != "admin") {
-      return res
-        .status(403)
-        .json({ message: "Not authorised to update the checklist" });
+        // Authorization check
+        const isAssigned = task.assignedTo.some(id => id.toString() === req.user._id.toString());
+        if (!isAssigned && req.user.role !== "admin") {
+            return res.status(403).json({ message: "Not authorised to update the checklist" });
+        }
+
+        // 3. FIXED: Sanitize the incoming checklist to prevent crashes
+        if (todoChecklist) {
+            todoChecklist = todoChecklist.map(item => {
+                if (item._id && !mongoose.Types.ObjectId.isValid(item._id)) {
+                    return { text: item.text, completed: item.completed };
+                }
+                return item;
+            });
+        }
+        
+        task.todoChecklist = todoChecklist;
+
+        // Progress calculation
+        const completedCount = task.todoChecklist.filter((item) => item.completed).length;
+        const totalItems = task.todoChecklist.length;
+        task.progress = totalItems > 0 ? Math.round((completedCount / totalItems) * 100) : 0;
+
+        // Status update logic
+        if (task.progress === 100) {
+            task.status = "Completed";
+        } else if (task.progress > 0) {
+            task.status = "In Progress";
+        } else {
+            task.status = "Pending";
+        }
+
+        await task.save();
+
+        const updatedTask = await Task.findById(req.params.id)
+            .populate('assignedTo', 'name email profileImageUrl')
+            .populate('project', 'name')
+            .populate('remarks.madeBy', 'name email profileImageUrl');
+
+        res.json({ message: "Task checklist updated", task: updatedTask });
+
+    } catch (error) {
+        console.error("Error in updateTaskChecklist:", error);
+        res.status(500).json({ message: "Server Error", error: error.message });
     }
-
-    task.todoChecklist = todoChecklist;
-
-    // Progress calculation
-    const completedCount = task.todoChecklist.filter(
-      (item) => item.completed
-    ).length;
-    const totalItems = task.todoChecklist.length;
-    task.progress =
-      totalItems > 0 ? Math.round((completedCount / totalItems) * 100) : 0;
-
-    // Status update logic
-    if (task.progress === 100) {
-      task.status = "Completed";
-    } else if (task.progress > 0) {
-      task.status = "In Progress";
-    } else {
-      task.status = "Pending";
-    }
-
-    await task.save();
-
-    // ✅ THE CORRECTED PART
-    // Find the task again and populate ALL necessary fields before responding.
-    const updatedTask = await Task.findById(req.params.id).populate([
-      { path: "assignedTo", select: "name email profileImageUrl" },
-      { path: "remarks.madeBy", select: "name email profileImageUrl" }, // <-- Add this line
-    ]);
-
-    res.json({ message: "Task checklist updated", task: updatedTask });
-    
-  } catch (error) {
-    res.status(500).json({ message: "Server Error ", error: error.message });
-  }
 };
+
 //@desc Dashboard data (admin only)
 //@route GET /api/tasks/dashbaord-data
 //@access PRIVATE
 
-const getDashboardData=async(req,res)=>{
-    try{
-        //Fetch Statistics
-        const totalTasks=await Task.countDocuments();
-        const pendingTasks=await Task.countDocuments({status:"Pending"});
-        const completedTasks=await Task.countDocuments({status:"Completed"});
-        const inProgressTasks=await Task.countDocuments({status:"In Progress"});
-        const overdueTasks=await Task.countDocuments({
-            status:{ $ne:"Completed" },
-            dueDate:{ $lt:new Date() },
-        });
+const getDashboardData = async (req, res) => {
+    try {
+        const { projectId } = req.query;
 
-        //Ensure all possible status are included
-        const taskStatuses=["Pending","In Progress","Completed"];
-        const taskDistributionRaw=await Task.aggregate([
+        // 1. Create a reusable base filter for all queries
+        const baseFilter = {};
+        if (projectId) {
+            baseFilter.project = new mongoose.Types.ObjectId(projectId);
+        }
+        // Secure the data: Non-admins only see stats for their own tasks
+        if (req.user.role !== 'admin') {
+            baseFilter.assignedTo = req.user._id;
+        }
+
+        // 2. Use a single powerful aggregation to get most stats at once
+        const mainStatsPromise = Task.aggregate([
+            { $match: baseFilter },
             {
-            $group:{
-                _id:"$status",
-                count:{$sum:1},
-                },
-            },
+                $facet: {
+                    // Facet 1: Calculate task distribution by status
+                    taskDistribution: [
+                        { $group: { _id: "$status", count: { $sum: 1 } } }
+                    ],
+                    // Facet 2: Calculate task distribution by priority
+                    taskPriorityLevels: [
+                        { $group: { _id: "$priority", count: { $sum: 1 } } }
+                    ],
+                    // Facet 3: Calculate overdue tasks
+                    overdueTasks: [
+                        { $match: { dueDate: { $lt: new Date() }, status: { $ne: "Completed" } } },
+                        { $count: "count" }
+                    ]
+                }
+            }
         ]);
 
-        const taskDistribution=taskStatuses.reduce((acc,status)=>{
-            const formattedKey=status.replace(/\s+/g,""); //Remove spaces for response keys
-            acc[formattedKey]=
-                taskDistributionRaw.find((item)=>item._id===status)?.count || 0;
-            return acc;
-        },{});
-
-        taskDistribution["All"]=totalTasks;  //Add total count to taskDistribution
-
-        //Ensure all priority levels are included
-        const taskPriorities=["Low","Medium","High"];
-        const taskPriorityLevelsRaw=await Task.aggregate([
-            {
-                $group:{
-                    _id:"$priority",
-                    count:{$sum: 1},
-                },
-            },
-        ]);
-        const taskPriorityLevels=taskPriorities.reduce((acc,priority)=>{
-            acc[priority]=
-                taskPriorityLevelsRaw.find((item)=>item._id===priority)?.count||0;
-            return acc;
-        },{});
-
-        //Fetch recent 10 tasks
-        const recentTasks=await Task.find()
-            .sort({createdAt:-1})
+        // 3. Get the 10 most recent tasks using the same filter
+        const recentTasksPromise = Task.find(baseFilter)
+            .sort({ createdAt: -1 })
             .limit(10)
-            .select("title status priority dueDate createdAt");
+            .populate('project', 'name')
+            .populate('assignedTo', 'name');
+
+        // 4. Calculate total hours worked
+        const calculateTotalHours = async () => {
+            const relevantTasks = await Task.find(baseFilter).select('_id');
+            const taskIds = relevantTasks.map(t => t._id);
+            if (taskIds.length === 0) return 0;
+
+            const timeLogStats = await TimeLog.aggregate([
+                { $match: { task: { $in: taskIds } } },
+                { $group: { _id: null, totalMilliseconds: { $sum: "$duration" } } }
+            ]);
+            if (timeLogStats.length === 0) return 0;
+            return timeLogStats[0].totalMilliseconds / (1000 * 60 * 60);
+        };
+        const totalHoursPromise = calculateTotalHours();
+
+        // Run all promises in parallel
+        const [mainResults, recentTasks, totalHours] = await Promise.all([
+            mainStatsPromise,
+            recentTasksPromise,
+            totalHoursPromise
+        ]);
+        
+        // 5. Format the results into the exact structure your frontend expects
+        const formatResults = (dataArray) => {
+            const result = {};
+            dataArray.forEach(item => {
+                const key = item._id.replace(/\s+/g, ''); // "In Progress" -> "InProgress"
+                result[key] = item.count;
+            });
+            return result;
+        };
+
+        const taskDistribution = formatResults(mainResults[0].taskDistribution);
+        const taskPriorityLevels = formatResults(mainResults[0].taskPriorityLevels);
+        
+        const totalTasks = mainResults[0].taskDistribution.reduce((sum, item) => sum + item.count, 0);
+        taskDistribution["All"] = totalTasks;
+
+        const statistics = {
+            totalTasks: totalTasks,
+            pendingTasks: taskDistribution.Pending || 0,
+            completedTasks: taskDistribution.Completed || 0,
+            inProgressTasks: taskDistribution.InProgress || 0, // Added this for consistency
+            overdueTasks: mainResults[0].overdueTasks[0]?.count || 0,
+        };
 
         res.status(200).json({
-            statistics:{
-                totalTasks,
-                pendingTasks,
-                completedTasks,
-                overdueTasks,
-            },
-            charts:{
+            statistics,
+            charts: {
                 taskDistribution,
                 taskPriorityLevels,
             },
             recentTasks,
+            totalHours: totalHours.toFixed(2), // Add the new total hours stat
         });
-} catch(error){
-    res.status(500).json({message:"Server error", error:error.message});
-}
+
+    } catch (error) {
+        console.error("Dashboard data fetching error:", error);
+        res.status(500).json({ message: "Server error", error: error.message });
+    }
 };
+
 //@desc Dashboard data (UserSpecific)
 //@route GET /api/tasks/user-dashbaord-data
 //@access PRIVATE
@@ -810,4 +940,5 @@ module.exports={
     stopTimer,
     getActiveTimer,
     getTaskTimeLogs,
+    getUserBoardData,
 };

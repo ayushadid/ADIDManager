@@ -1,5 +1,5 @@
 const TimeLog = require("../models/TimeLog");
-
+const Task = require('../models/Task');
 /**
  * @desc    Get all time logs for a user on a specific day
  * @route   GET /api/timelogs/day/:userId
@@ -118,9 +118,60 @@ const getActiveTimelogs = async (req, res) => {
   }
 };
 
+/**
+ * @desc    Get a summary of total work hours, optionally filtered by project.
+ * @route   GET /api/timelogs/summary/work-hours
+ * @access  Private/Admin
+ */
+const getWorkHoursSummary = async (req, res) => {
+    try {
+        const { projectId } = req.query;
+        let totalMilliseconds = 0;
+
+        const pipeline = [
+            {
+                $group: {
+                    _id: null,
+                    totalDuration: { $sum: "$duration" }
+                }
+            }
+        ];
+
+        if (projectId) {
+            // If a project is specified, find all tasks in that project
+            const tasksInProject = await Task.find({ project: projectId }).select('_id');
+            const taskIds = tasksInProject.map(task => task._id);
+
+            // Add a $match stage to the start of the pipeline to filter timelogs
+            pipeline.unshift({
+                $match: {
+                    task: { $in: taskIds }
+                }
+            });
+        }
+        
+        const result = await TimeLog.aggregate(pipeline);
+
+        if (result.length > 0) {
+            totalMilliseconds = result[0].totalDuration;
+        }
+
+        const totalHours = totalMilliseconds / (1000 * 60 * 60);
+
+        res.json({
+            totalHours: totalHours.toFixed(2),
+            projectId: projectId || 'all',
+        });
+
+    } catch (error) {
+        console.error("Work Hours Summary Error:", error);
+        res.status(500).json({ message: "Server error while calculating work hours." });
+    }
+};
 
 module.exports = {
   getTimeLogsByDay,
   getAllTimeLogsByDay,
-  getActiveTimelogs, // 👈 Add the new function to exports
+  getActiveTimelogs,
+  getWorkHoursSummary, // 👈 Add the new function to exports
 };

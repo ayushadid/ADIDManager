@@ -14,6 +14,9 @@ import TodoListInput from '../../components/Inputs/TodoListInput'
 import AddAttachmentsInput from '../../components/Inputs/AddAttachmentsInput'
 import ConfirmationAlert from '../../components/ConfirmationAlert';
 
+// Define a constant for the special "Create" option's value
+const CREATE_NEW_PROJECT_VALUE = 'CREATE_NEW_PROJECT';
+
 const defaultTodos = [
   { _id: 'default_done', text: 'Done', completed: false, isDefault: true },
   { _id: 'default_approved', text: 'Approved', completed: false, isDefault: true },
@@ -70,6 +73,8 @@ const handleValueChange = useCallback((key, value) => {
   setTaskData((prevData) => ({ ...prevData, [key]: value }));
 }, []); // The empty array [] means the function is created once and never changes
 
+  
+
   const clearData=()=>{
     setTaskData({
       project:"",
@@ -82,7 +87,49 @@ const handleValueChange = useCallback((key, value) => {
       attachments:[],
     });
   };
+  const handleCreateNewProject = async () => {
+    const newProjectName = window.prompt("Enter the new project name:");
 
+    if (!newProjectName || newProjectName.trim() === "") {
+      toast.error("Project name cannot be empty.");
+      return;
+    }
+
+    try {
+      // Use the API path you defined to create the project
+      const response = await axiosInstance.post(API_PATHS.PROJECTS.CREATE_PROJECT, {
+        name: newProjectName.trim(),
+      });
+
+      if (response.data) {
+        const newProject = response.data;
+        const formattedNewProject = {
+          value: newProject._id,
+          label: newProject.name,
+        };
+
+        // Update the projects list with the new one
+        setProjects((prevProjects) => [...prevProjects, formattedNewProject]);
+        
+        // Automatically select the new project for the current task
+        handleValueChange("project", newProject._id);
+
+        toast.success(`Project "${newProject.name}" created successfully!`);
+      }
+    } catch (error) {
+      console.error("Error creating new project", error);
+      toast.error(error.response?.data?.message || "Failed to create project.");
+    }
+  };
+
+  // This handler checks if the user clicked "Create new project" or a regular one
+  const handleProjectSelection = (selectedValue) => {
+    if (selectedValue === CREATE_NEW_PROJECT_VALUE) {
+      handleCreateNewProject();
+    } else {
+      handleValueChange("project", selectedValue);
+    }
+  };
   const createTask=async()=>{
     setLoading(true);
 
@@ -325,14 +372,19 @@ const getStatusTagColor = (status) => {
   )}
 </div>
 <div className="mt-4">
-  <label className="text-xs font-medium text-slate-600">Project</label>
-  <SelectDropdown
-    options={projects}
-    value={taskData.project}
-    onChange={(value) => handleValueChange("project", value)}
-    placeholder="Select a Project"
-  />
-</div>
+              <label className="text-xs font-medium text-slate-600">Project</label>
+              <SelectDropdown
+                // Prepend the "Create" option to the dynamic projects list
+                options={[
+                    { value: CREATE_NEW_PROJECT_VALUE, label: "+ Create a new project" },
+                    ...projects,
+                ]}
+                value={taskData.project}
+                // Use the new handler function to check for the special value
+                onChange={handleProjectSelection}
+                placeholder="Select a Project"
+              />
+            </div>
           <div className='mt-4'>
             <label className="text-xs font-medium text-slate-600">
               Task Title

@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import DashboardLayout from '../../components/layouts/DashboardLayout';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate,useLocation } from 'react-router-dom';
 import axiosInstance from '../../utils/axiosinstance';
 import { API_PATHS } from '../../utils/apiPaths';
 import TaskStatusTab from '../../components/TaskStatusTab';
 import TaskCard from '../../components/cards/TaskCard';
 
 const MyTasks = () => {
+  const location = useLocation(); // 👈 Add this line
   const [allTasks, setAllTasks] = useState([]);
   const [tabs, setTabs] = useState([]);
-  const [filterStatus, setFilterStatus] = useState("All");
+  const [filterStatus, setFilterStatus] = useState(location.state?.statusFilter || "All");
+  
   
   // 1. Add new state for projects and the selected project filter
   const [projects, setProjects] = useState([]);

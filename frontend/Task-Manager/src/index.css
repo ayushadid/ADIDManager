@@ -53,3 +53,11 @@
 .add-btn{
   @apply w-full flex items-center justify-center gap-1.5 text-xs md:text-sm font-medium text-primary whitespace-nowrap bg-blue-50 border-blue-100 rounded-lg px-4 py-2 cursor-pointer;
 }
+
+/* In your main CSS file (e.g., index.css) */
+.truncate-description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;  /* This is the number of lines you want to show */
+  overflow: hidden;
+}

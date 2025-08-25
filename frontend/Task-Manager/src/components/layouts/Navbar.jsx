@@ -1,34 +1,40 @@
-import React, { useState } from 'react'
-import { HiOutlineMenu, HiOutlineX } from 'react-icons/hi'
-import SideMenu from './SideMenu';
+import React, { useContext } from 'react';
+import { UserContext } from '../../context/userContext';
+import { LuMenu } from 'react-icons/lu'; // A clean menu icon
 
-const Navbar = ({activeMenu}) => {
+// The Navbar now receives an onMenuClick function as a prop
+const Navbar = ({ activeMenu, onMenuClick }) => {
+    const { user } = useContext(UserContext);
 
-    const [OpenSideMenu,setOpenSideMenu]=useState(false);
-  return (
-    <div className='flex gap-5 bg-white border border-b border-gray-200/50 backdrop-blur-[2px] py-4 px-7 sticky top-0 z-30'>
-        <button 
-            className='block lg:hidden text-black'
-            onClick={()=>{
-                setOpenSideMenu(!OpenSideMenu);
-            }}
-            >
-                {OpenSideMenu?(
-                    <HiOutlineX className="text-2xl" />
-                ):(
-                    <HiOutlineMenu className="text-2xl" />
-                )}
-            </button>
+    // This component no longer needs its own state to manage the side menu
+    
+    return (
+        <header className="bg-white shadow-sm p-4 flex justify-between items-center h-16 flex-shrink-0 z-30">
+            <div className="flex items-center gap-4">
+                {/* Hamburger Icon - Mobile Only */}
+                {/* It calls the onMenuClick function passed down from the layout */}
+                <button 
+                    onClick={onMenuClick} 
+                    className="md:hidden text-2xl text-gray-600"
+                >
+                    <LuMenu />
+                </button>
 
-            <h2 className='text-lg font-medium text-black'>Tracker</h2>
+                {/* Page Title - Desktop Only */}
+                <h2 className="font-bold text-lg text-primary hidden md:block">{activeMenu}</h2>
+            </div>
+            
+            {/* User Info on the right side */}
+            <div className="flex items-center gap-3">
+                <span className="font-semibold text-sm hidden sm:block">{user?.name}</span>
+                <img 
+                    src={user?.profileImageUrl || `https://ui-avatars.com/api/?name=${user?.name || 'A'}`} 
+                    alt="profile" 
+                    className="w-9 h-9 rounded-full object-cover"
+                />
+            </div>
+        </header>
+    );
+};
 
-            {OpenSideMenu && (
-                <div className='fixed top-[61px] -ml-4 bg-white'>
-                    <SideMenu activeMenu={activeMenu} />
-                </div>
-            )}
-    </div>
-  )
-}
-
-export default Navbar
+export default Navbar;

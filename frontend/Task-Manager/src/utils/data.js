@@ -5,6 +5,8 @@ import {
     LuSquarePlus,
     LuLogOut,
     LuSheet,   
+    LuView,
+    LuBell,
 } from "react-icons/lu"
 
 export const SIDE_MENU_DATA=[
@@ -14,6 +16,12 @@ export const SIDE_MENU_DATA=[
         icon:LuLayoutDashboard,
         path:"/admin/dashboard",
     },
+    {
+        id:"99",
+    label: "Notifications",
+    path: "/notifications",
+    icon: LuBell,
+  },
     {
         id:"02",
         label:"Manage Tasks",
@@ -35,9 +43,14 @@ export const SIDE_MENU_DATA=[
     {
         id:"07",
       label: "My Day View",
-      path: "/admin/day-view",
+      path: "/admin/my-day-view",
       icon: LuLayoutDashboard ,
     },
+     {
+    label: "Board",
+    path: "/board",
+    icon: LuView,
+  },
     {
         id:"06",
     label: "Shared Sheet",
@@ -60,6 +73,12 @@ export const SIDE_MENU_USER_DATA=[
         path:"/user/dashboard",
     },
     {
+        id:"99",
+    label: "Notifications",
+    path: "/notifications",
+    icon: LuBell,
+  },
+    {
         id:"02",
         label:"My Tasks",
         icon:LuClipboardCheck,
@@ -68,9 +87,14 @@ export const SIDE_MENU_USER_DATA=[
     {
         id:"07",
       label: "My Day View",
-      path: "/user/day-view",
+      path: "/user/my-day-view",
       icon: LuLayoutDashboard ,
     },
+     {
+    label: "Board",
+    path: "/board",
+    icon: LuView,
+  },
     {
         id:"06",
     label: "Shared Sheet",

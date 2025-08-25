@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate,useLocation  } from 'react-router-dom';
 import axiosInstance from '../../utils/axiosinstance';
 import { API_PATHS } from '../../utils/apiPaths';
 import { UserContext } from '../../context/userContext';
@@ -16,18 +16,20 @@ import { FaTimes, FaUsers } from 'react-icons/fa';
 
 const ManageTasks = () => {
     // State for data and loading
+    const location = useLocation(); // 👈 Add this line
+    const queryParams = new URLSearchParams(location.search);
+
     const [displayedTasks, setDisplayedTasks] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [projects, setProjects] = useState([]);
     const [tabs, setTabs] = useState([]);
     const [users, setUsers] = useState([]); // State to hold the list of users
-
-    // State for all filters
-    const [filterStatus, setFilterStatus] = useState("All");
-    const [selectedProject, setSelectedProject] = useState('all');
-    const [dueDateFilter, setDueDateFilter] = useState('');
-    const [createdDateFilter, setCreatedDateFilter] = useState('');
-    const [selectedUserId, setSelectedUserId] = useState('all'); // Replaced 'assignmentFilter'
+    const [filterStatus, setFilterStatus] = useState(queryParams.get('status') || "All");
+    const [selectedProject, setSelectedProject] = useState(queryParams.get('projectId') || 'all');
+    const [selectedUserId, setSelectedUserId] = useState(queryParams.get('assignedUserId') || 'all');
+    const [sortBy, setSortBy] = useState(queryParams.get('sortBy') || 'createdAt');
+    const [dueDateFilter, setDueDateFilter] = useState(queryParams.get('dueDate') || '');
+    const [createdDateFilter, setCreatedDateFilter] = useState(queryParams.get('createdDate') || '');
 
     // State for "Live Tasks" feature
     const [showLiveOnly, setShowLiveOnly] = useState(false);
@@ -37,51 +39,46 @@ const ManageTasks = () => {
     const navigate = useNavigate();
 
     // Primary data fetching function with all server-side filters
-    const fetchTasks = useCallback(async () => {
-        setIsLoading(true);
-        try {
-            const params = new URLSearchParams();
+const fetchTasks = useCallback(async () => {
+    setIsLoading(true);
+    try {
+        // The location.search already contains the most up-to-date query string from the URL
+        // e.g., "?project=some_id&status=Pending"
+        const response = await axiosInstance.get(`${API_PATHS.TASKS.GET_ALL_TASKS}${location.search}`);
+        
+        setDisplayedTasks(response.data?.tasks || []);
+        
+        const statusSummary = response.data?.statusSummary || {};
+        const statusArray = [
+            { label: "All", count: statusSummary.all || 0 },
+            { label: "Overdue", count: statusSummary.overdueTasks || 0 },
+            { label: "Pending", count: statusSummary.pendingTasks || 0 },
+            { label: "In Progress", count: statusSummary.inProgressTasks || 0 },
+            { label: "Completed", count: statusSummary.completedTasks || 0 },
+        ];
+        setTabs(statusArray);
 
-            // Handle status and overdue filters
-            if (filterStatus === 'Overdue') {
-                params.append('isOverdue', 'true');
-            } else if (filterStatus !== 'All') {
-                params.append('status', filterStatus);
-            }
-            
-            // Handle new user assignment filter
-            if (selectedUserId !== 'all') {
-                params.append('assignedUserId', selectedUserId);
-            }
+    } catch (error) {
+        console.error("Error fetching tasks:", error);
+        setDisplayedTasks([]);
+    } finally {
+        setIsLoading(false);
+    }
+}, [location.search]); // 👈 The dependency is now just the URL's search string
 
-            // Append other active filters
-            if (selectedProject !== 'all') params.append('projectId', selectedProject);
-            if (dueDateFilter) params.append('dueDate', dueDateFilter);
-            if (createdDateFilter) params.append('createdDate', createdDateFilter);
+    useEffect(() => {
+        const params = new URLSearchParams();
+        
+        if (filterStatus && filterStatus !== 'All') params.set('status', filterStatus);
+        if (selectedProject && selectedProject !== 'all') params.set('projectId', selectedProject);
+        if (selectedUserId && selectedUserId !== 'all') params.set('assignedUserId', selectedUserId);
+        if (sortBy && sortBy !== 'createdAt') params.set('sortBy', sortBy);
+        if (dueDateFilter) params.set('dueDate', dueDateFilter);
+        if (createdDateFilter) params.set('createdDate', createdDateFilter);
 
-            // The backend secures the data based on the user's role and the passed params
-            const response = await axiosInstance.get(`${API_PATHS.TASKS.GET_ALL_TASKS}?${params.toString()}`);
-
-            setDisplayedTasks(response.data?.tasks || []);
-            
-            // Construct the tabs array including the 'Overdue' count from the API
-            const statusSummary = response.data?.statusSummary || {};
-            const statusArray = [
-                { label: "All", count: statusSummary.all || 0 },
-                { label: "Overdue", count: statusSummary.overdueTasks || 0 },
-                { label: "Pending", count: statusSummary.pendingTasks || 0 },
-                { label: "In Progress", count: statusSummary.inProgressTasks || 0 },
-                { label: "Completed", count: statusSummary.completedTasks || 0 },
-            ];
-            setTabs(statusArray);
-
-        } catch (error) {
-            console.error("Error fetching tasks:", error);
-            setDisplayedTasks([]);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [filterStatus, selectedProject, dueDateFilter, createdDateFilter, selectedUserId]);
+        navigate({ search: params.toString() }, { replace: true });
+        
+    }, [filterStatus, selectedProject, selectedUserId, sortBy, dueDateFilter, createdDateFilter, navigate]);
 
     // Effect to fetch all users for the dropdown (for admins only)
     useEffect(() => {
@@ -130,7 +127,11 @@ const ManageTasks = () => {
                 setIsLoading(true);
                 try {
                     const response = await axiosInstance.get(API_PATHS.TIMELOGS.GET_ACTIVE_TIMELOGS);
-                    const activeTasks = response.data.map(log => log.task);
+                    // We now filter out any null tasks to prevent the crash
+                    const activeTasks = response.data
+                        .map(log => log.task)
+                        .filter(Boolean); // This removes any null or undefined items
+                    // --- END: CORRECTED SECTION ---
                     setLiveTasks(activeTasks);
                 } catch (error) {
                     console.error("Error fetching live tasks:", error);
@@ -188,7 +189,17 @@ const ManageTasks = () => {
                                 {projects.map((project) => (<option key={project._id} value={project._id}>{project.name}</option>))}
                             </select>
                         </div>
-                        
+                        <div>
+    <label className="block text-sm font-medium text-slate-600 mb-1">Sort By</label>
+    <select
+        className="form-input text-sm w-full"
+        value={sortBy}
+        onChange={(e) => setSortBy(e.target.value)}
+    >
+        <option value="createdAt">Most Recent</option>
+        <option value="hours">Most Hours Logged</option>
+    </select>
+</div>
                         {/* User Assignment Dropdown (Admin only) */}
                         {currentUser?.role === 'admin' && (
                             <div>

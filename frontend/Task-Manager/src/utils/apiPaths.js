@@ -34,19 +34,27 @@ export const API_PATHS={
         STOP_TIMER: (taskId, timeLogId) => `/api/tasks/${taskId}/timelogs/${timeLogId}/stop`,
         GET_ACTIVE_TIMER: (taskId) => `/api/tasks/${taskId}/timelogs/active`,
         GET_TASK_TIMELOGS: (taskId) => `/api/tasks/${taskId}/timelogs`,
+
+        GET_USER_BOARD: "/api/tasks/user-board",
     },
     TIMELOGS: {
-  GET_BY_DAY: (userId) => `/api/timelogs/day/${userId}`,
-  GET_ALL_BY_DAY: "/api/timelogs/all-by-day", // 👈 Add this line
-  GET_ACTIVE_TIMELOGS: "/api/timelogs/active",
+        GET_BY_DAY: (userId) => `/api/timelogs/day/${userId}`,
+        GET_ALL_BY_DAY: "/api/timelogs/all-by-day", // 👈 Add this line
+        GET_ACTIVE_TIMELOGS: "/api/timelogs/active",
+        GET_WORK_HOURS_SUMMARY: "/api/timelogs/summary/work-hours",   
 },
     PROJECTS: {
         CREATE_PROJECT: "/api/projects", // To create a new project
         GET_MY_PROJECTS: "/api/projects", // To get projects for the logged-in user
         GET_ALL_PROJECTS: "/api/projects/all", // To get all projects (Admin Only)
   },
-  AI: {
+     AI: {
         CREATE_TASK: "/api/ai/create-task",
+    },
+    NOTIFICATIONS: {
+    GET_ALL: "/api/notifications",
+    MARK_AS_READ: "/api/notifications/read",
+    MARK_ONE_AS_READ: (id) => `/api/notifications/${id}/read`, // 👈 Add this line
     },
 
     REPORTS:{

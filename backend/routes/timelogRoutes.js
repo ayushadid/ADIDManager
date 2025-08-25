@@ -3,7 +3,7 @@
 const express = require("express");
 const router = express.Router();
 // 👇 1. Import the new function
-const { getTimeLogsByDay, getAllTimeLogsByDay,getActiveTimelogs } = require("../controllers/timelogController");
+const { getTimeLogsByDay, getAllTimeLogsByDay,getActiveTimelogs,getWorkHoursSummary  } = require("../controllers/timelogController");
 const { protect, adminOnly } = require("../middlewares/authMiddleware"); // Import adminOnly
 
 // Route for individual user logs
@@ -13,6 +13,8 @@ router.get("/day/:userId", protect, getTimeLogsByDay);
 router.get("/all-by-day", protect, adminOnly, getAllTimeLogsByDay);
 
 router.get("/active", protect, adminOnly, getActiveTimelogs);
+
+router.get('/summary/work-hours', protect, adminOnly, getWorkHoursSummary);
 
 
 module.exports = router;
