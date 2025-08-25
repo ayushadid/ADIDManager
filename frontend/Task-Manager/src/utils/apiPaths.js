@@ -1,4 +1,5 @@
-export const BASE_URL="http://192.168.1.15:8000"
+export const BASE_URL=import.meta.env.VITE_API_URL ||"http://192.168.1.15:8000"
+
 //utils/apiPaths.js
 export const API_PATHS={
     AUTH: {
