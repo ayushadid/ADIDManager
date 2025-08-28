@@ -939,19 +939,20 @@ try{
 const addCommentToTask = async (req, res) => {
     try {
         const { text } = req.body;
-        const taskId = req.params.id; // 👈 1. Define taskId here
-        
+        const taskId = req.params.id;
+        const currentUser = req.user; // Get the full user object of the commenter
+
         if (!text || text.trim() === '') {
             return res.status(400).json({ message: "Comment text cannot be empty." });
         }
 
-        const task = await Task.findById(taskId); // 👈 2. Use taskId
+        const task = await Task.findById(taskId);
         if (!task) {
             return res.status(404).json({ message: "Task not found." });
         }
 
-        const isAdmin = req.user.role === 'admin';
-        const isAssigned = task.assignedTo.some(id => id.toString() === req.user._id.toString());
+        const isAdmin = currentUser.role === 'admin';
+        const isAssigned = task.assignedTo.some(id => id.toString() === currentUser._id.toString());
 
         if (!isAdmin && !isAssigned) {
             return res.status(403).json({ message: "Not authorized to comment on this task." });
@@ -959,31 +960,45 @@ const addCommentToTask = async (req, res) => {
 
         const newComment = {
             text: text,
-            madeBy: req.user._id,
+            madeBy: currentUser._id,
         };
 
         task.comments.push(newComment);
         await task.save();
 
+        // --- START: Corrected Real-Time Logic ---
         const { io, userSocketMap } = req;
+
+        // 1. Get the newly created comment and populate its author's details
         const populatedComment = task.comments[task.comments.length - 1];
         await Task.populate(populatedComment, { path: 'madeBy', select: 'name profileImageUrl' });
 
+        // 2. Get all admins from the database
+        const admins = await User.find({ role: 'admin' }).select('_id');
+        const adminIds = admins.map(admin => admin._id.toString());
+        
+        // 3. Get all users assigned to the task
         const assignedUserIds = task.assignedTo.map(id => id.toString());
 
-        assignedUserIds.forEach(userId => {
-            if (userId !== req.user._id.toString()) {
+        // 4. Combine the lists and remove duplicates to create a final list of recipients
+        const recipientIds = new Set([...adminIds, ...assignedUserIds]);
+
+        // 5. Emit the event to every recipient EXCEPT the one who sent the comment
+        recipientIds.forEach(userId => {
+            if (userId !== currentUser._id.toString()) {
                 const socketId = userSocketMap[userId];
                 if (socketId) {
                     io.to(socketId).emit('new_comment', { 
-                        taskId: taskId, // 👈 3. Use taskId
+                        taskId: taskId,
                         comment: populatedComment 
                     });
                 }
             }
         });
+        // --- END: Corrected Real-Time Logic ---
 
-        const populatedTask = await Task.findById(taskId).populate('comments.madeBy', 'name profileImageUrl'); // 👈 4. Use taskId
+        // Return the full task to the original sender
+        const populatedTask = await Task.findById(taskId).populate('comments.madeBy', 'name profileImageUrl');
         res.status(201).json(populatedTask);
 
     } catch (error) {
