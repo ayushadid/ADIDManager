@@ -489,6 +489,7 @@ const getTaskById = async (req, res) => {
             { path: "assignedTo", select: "name email profileImageUrl" },
             { path: "remarks.madeBy", select: "name email profileImageUrl" } ,
             { path: "project", select: "name" },// This is now always included
+            { path: "comments.madeBy", select: "name" }
         ];
 
         /* // REMOVED: Conditional population
@@ -537,6 +538,8 @@ const createTask = async (req, res) => {
             title,
             description,
             priority,
+            startDate,       
+            estimatedHours,
             dueDate,
             assignedTo,
             attachments,
@@ -558,6 +561,8 @@ const createTask = async (req, res) => {
             title,
             description,
             priority,
+            startDate,       // 👈 Add the new field to the database object
+            estimatedHours,
             dueDate,
             assignedTo,
             createdBy: req.user._id,
@@ -625,6 +630,8 @@ const updateTask = async (req, res) => {
         task.todoChecklist = req.body.todoChecklist || task.todoChecklist;
         task.attachments = req.body.attachments || task.attachments;
         task.project = req.body.project || task.project;
+        task.startDate = req.body.startDate || task.startDate;
+        task.estimatedHours = req.body.estimatedHours || task.estimatedHours;
 
         if (req.body.assignedTo) {
             if (!Array.isArray(req.body.assignedTo)) {
@@ -924,6 +931,67 @@ try{
     }
 }
 
+/**
+ * @desc    Add a comment to a task
+ * @route   POST /api/tasks/:id/comments
+ * @access  Private (Assigned User or Admin)
+ */
+const addCommentToTask = async (req, res) => {
+    try {
+        const { text } = req.body;
+        const taskId = req.params.id; // 👈 1. Define taskId here
+        
+        if (!text || text.trim() === '') {
+            return res.status(400).json({ message: "Comment text cannot be empty." });
+        }
+
+        const task = await Task.findById(taskId); // 👈 2. Use taskId
+        if (!task) {
+            return res.status(404).json({ message: "Task not found." });
+        }
+
+        const isAdmin = req.user.role === 'admin';
+        const isAssigned = task.assignedTo.some(id => id.toString() === req.user._id.toString());
+
+        if (!isAdmin && !isAssigned) {
+            return res.status(403).json({ message: "Not authorized to comment on this task." });
+        }
+
+        const newComment = {
+            text: text,
+            madeBy: req.user._id,
+        };
+
+        task.comments.push(newComment);
+        await task.save();
+
+        const { io, userSocketMap } = req;
+        const populatedComment = task.comments[task.comments.length - 1];
+        await Task.populate(populatedComment, { path: 'madeBy', select: 'name profileImageUrl' });
+
+        const assignedUserIds = task.assignedTo.map(id => id.toString());
+
+        assignedUserIds.forEach(userId => {
+            if (userId !== req.user._id.toString()) {
+                const socketId = userSocketMap[userId];
+                if (socketId) {
+                    io.to(socketId).emit('new_comment', { 
+                        taskId: taskId, // 👈 3. Use taskId
+                        comment: populatedComment 
+                    });
+                }
+            }
+        });
+
+        const populatedTask = await Task.findById(taskId).populate('comments.madeBy', 'name profileImageUrl'); // 👈 4. Use taskId
+        res.status(201).json(populatedTask);
+
+    } catch (error) {
+        console.error("Error adding comment:", error);
+        res.status(500).json({ message: "Server Error", error: error.message });
+    }
+};
+
 module.exports={
     getTasks,
     getTasksForSpecificUser,
@@ -941,4 +1009,5 @@ module.exports={
     getActiveTimer,
     getTaskTimeLogs,
     getUserBoardData,
+    addCommentToTask,
 };

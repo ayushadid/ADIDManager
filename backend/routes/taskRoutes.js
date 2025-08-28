@@ -18,6 +18,7 @@ const {
     getActiveTimer,
     getTaskTimeLogs,
     getUserBoardData,
+    addCommentToTask,
 } = require("../controllers/taskController");
 const router = express.Router();
 
@@ -45,6 +46,7 @@ router.get("/:taskId/timelogs", protect, getTaskTimeLogs);
 
 // Routes for adding remarks
 router.post("/:id/remarks", protect, adminOnly, addRemarkToTask);
+router.post("/:id/comments", protect, addCommentToTask);
 
 // Routes for updating status and checklist
 router.put("/:id/status", protect, updateTaskStatus);

@@ -11,8 +11,11 @@ import {LuTrash2} from 'react-icons/lu'
 import SelectDropdown from '../../components/Inputs/SelectDropdown'
 import SelectUsers from '../../components/Inputs/SelectUsers'
 import TodoListInput from '../../components/Inputs/TodoListInput'
+import Select from 'react-select';
 import AddAttachmentsInput from '../../components/Inputs/AddAttachmentsInput'
 import ConfirmationAlert from '../../components/ConfirmationAlert';
+import CommentSection from '../../components/CommentSection';
+
 
 // Define a constant for the special "Create" option's value
 const CREATE_NEW_PROJECT_VALUE = 'CREATE_NEW_PROJECT';
@@ -34,12 +37,38 @@ const CreateTask = () => {
     description:"",
     priority:"Low",
     status: "Pending",
+    startDate: null,
     dueDate:null,
+    estimatedHours: 0,
     assignedTo:[],
     todoChecklist:defaultTodos,
+    dependencies: [],
     attachments:[],
   });
   
+  const [projectTasks, setProjectTasks] = useState([]);
+
+  useEffect(() => {
+        const fetchProjectTasks = async () => {
+            if (!taskData.project) {
+                setProjectTasks([]);
+                return;
+            }
+            try {
+                // Fetch all tasks for the currently selected project
+                const response = await axiosInstance.get(`${API_PATHS.TASKS.GET_ALL_TASKS}?projectId=${taskData.project}`);
+                // Format for react-select and filter out the current task (a task can't depend on itself)
+                const filteredTasks = response.data.tasks
+                    .filter(task => task._id !== taskId) 
+                    .map(task => ({ value: task._id, label: task.title }));
+                setProjectTasks(filteredTasks);
+            } catch (error) {
+                console.error("Error fetching project tasks", error);
+            }
+        };
+        fetchProjectTasks();
+    }, [taskData.project, taskId]);
+
  // In CreateTask.jsx
 
 const fetchAllProjects = async () => {
@@ -82,6 +111,8 @@ const handleValueChange = useCallback((key, value) => {
       description:"",
       priority:"Low",
       dueDate:null,
+      startDate: null,
+      estimatedHours: 0,
       assignedTo:[],
       todoChecklist:defaultTodos,
       attachments:[],
@@ -234,7 +265,9 @@ const handleValueChange = useCallback((key, value) => {
             :null,
           assignedTo:taskInfo?.assignedTo?.map((item)=>item?._id)||[],
           todoChecklist: taskInfo?.todoChecklist || [],
+          dependencies: taskInfo.dependencies?.map(dep => ({ value: dep._id, label: dep.title })) || [],
           attachments: taskInfo?.attachments || [],
+          comments: taskInfo.comments || [],
         }));
       }
     } catch(error){
@@ -339,7 +372,9 @@ const getStatusTagColor = (status) => {
       return "text-violet-500 bg-violet-50 border border-violet-500/10";
   }
 };
-
+const refreshTaskDataWithNewComment = (updatedTask) => {
+        setTaskData(prev => ({ ...prev, comments: updatedTask.comments }));
+    };
   return (
   <DashboardLayout activeMenu="Create Task">
     <div className="mt-5">
@@ -415,33 +450,64 @@ const getStatusTagColor = (status) => {
             />
           </div>
 
-          <div className="grid grid-cols-12 gap-4 mt-2">
-              <div className="col-span-6 md:col-span-4">
-              <label className="text-xs font-medium text-slate-600">
-                Priority
-              </label>
-                <SelectDropdown
-               options={PRIORITY_DATA}
-               value={taskData.priority}
-               onChange={(value) => handleValueChange("priority", value)}
-               placeholder="Select Priority"
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+              <div className="col-span-1">
+                <label className="text-xs font-medium text-slate-600">Start Date</label>
+                <input
+                  className='form-input'
+                  value={taskData.startDate || ''}
+                  onChange={({ target }) => handleValueChange("startDate", target.value)}
+                  type="date"
                 />
+              </div>
+
+              <div className='col-span-1'>
+                <label className="text-xs font-medium text-slate-600">Due Date</label>
+                <input
+                  className='form-input'
+                  value={taskData.dueDate || ''}
+                  onChange={({ target }) => handleValueChange("dueDate", target.value)}
+                  type="date"
+                />
+              </div>
+
+              <div className="col-span-1">
+                <label className="text-xs font-medium text-slate-600">Estimated Hours</label>
+                <input
+                  placeholder="e.g., 8"
+                  className='form-input'
+                  value={taskData.estimatedHours || ''}
+                  onChange={({ target }) => handleValueChange("estimatedHours", Number(target.value))}
+                  type="number"
+                  min="0"
+                />
+              </div>
+
+              <div className="col-span-1">
+                <label className="text-xs font-medium text-slate-600">Priority</label>
+                <SelectDropdown
+                  options={PRIORITY_DATA}
+                  value={taskData.priority}
+                  onChange={(value) => handleValueChange("priority", value)}
+                  placeholder="Select Priority"
+                />
+              </div>
             </div>
 
-            <div className='col-span-6 md:col-span-4'>
-              <label className="text-xs font-medium text-slate-600">
-                Due Date
-              </label>
-              <input
-                placeholder="Create App UI"
-                className='form-input'
-                value={taskData.dueDate}
-                onChange={({target})=>
-                  handleValueChange("dueDate",target.value)
-                }
-                type="date"
-              />
-            </div>
+            <div className='mt-3'>
+                        <label className="text-xs font-medium text-slate-600">
+                            Dependencies (Tasks that must be finished first)
+                        </label>
+                        <Select
+                            isMulti
+                            options={projectTasks}
+                            value={taskData.dependencies}
+                            onChange={(selectedOptions) => handleValueChange("dependencies", selectedOptions)}
+                            placeholder="Select tasks..."
+                            className="mt-1"
+                            classNamePrefix="select"
+                        />
+                    </div>
 
             <div className='col-span-12 md:col-span-3'>
               <label className='text-xs font-medium text-slate-600'>
@@ -455,7 +521,7 @@ const getStatusTagColor = (status) => {
                 })}
               />
             </div>
-            </div>
+            
             <div className='mt-3'>
               <label className="text-xs font-medium text-slate-600">
                 TODO Checklist
@@ -480,6 +546,14 @@ const getStatusTagColor = (status) => {
                   handleValueChange("attachments",value)
                 }
               />
+
+              {taskId && (
+                    <CommentSection 
+                        taskId={taskId}
+                        comments={taskData.comments}
+                        onCommentAdded={refreshTaskDataWithNewComment}
+                    />
+                )}
             </div>
 
             {error &&(

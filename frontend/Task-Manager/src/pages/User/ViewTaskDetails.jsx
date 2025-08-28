@@ -7,6 +7,7 @@ import DashboardLayout from '../../components/layouts/DashboardLayout';
 import moment from 'moment';
 import AvatarGroup from '../../components/AvatarGroup';
 import { LuSquareArrowOutUpRight } from 'react-icons/lu';
+import CommentSection from '../../components/CommentSection';
 
 const ViewTaskDetails = () => {
   const { id } = useParams();
@@ -167,6 +168,12 @@ const ViewTaskDetails = () => {
                 </div>
               )}
               {/* END: ADDED REMARKS SECTION */}
+
+              <CommentSection 
+                        taskId={id}
+                        comments={task.comments}
+                        onCommentAdded={(updatedTask) => setTask(updatedTask)} // This refreshes the page with the new comment
+                    />
 
             </div>
           </div>

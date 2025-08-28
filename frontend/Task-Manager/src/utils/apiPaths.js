@@ -30,7 +30,8 @@ export const API_PATHS={
         UPDATE_TASK_STATUS:(taskId)=>`/api/tasks/${taskId}/status`,
         UPDATE_TASK_CHECKLIST:(taskId)=>`/api/tasks/${taskId}/todo`,
         ADD_REMARK: (taskId) => `/api/tasks/${taskId}/remarks`, 
-        
+        ADD_COMMENT: (taskId) => `/api/tasks/${taskId}/comments`,
+
         START_TIMER: (taskId) => `/api/tasks/${taskId}/timelogs/start`,
         STOP_TIMER: (taskId, timeLogId) => `/api/tasks/${taskId}/timelogs/${timeLogId}/stop`,
         GET_ACTIVE_TIMER: (taskId) => `/api/tasks/${taskId}/timelogs/active`,

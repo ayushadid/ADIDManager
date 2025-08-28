@@ -9,9 +9,10 @@ export const UserContext = createContext();
 const UserProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [notifications, setNotifications] = useState([]); // State for notifications
+  const [notifications, setNotifications] = useState([]);
+  const [socket, setSocket] = useState(null); // This state holds the connection
 
-  // This useEffect fetches the user's profile when the app loads
+  // This useEffect for fetching the initial user is correct and unchanged
   useEffect(() => {
     if (user) return;
     const accessToken = localStorage.getItem("token");
@@ -33,9 +34,8 @@ const UserProvider = ({ children }) => {
     fetchUser();
   }, [user]);
 
-  // This useEffect manages the WebSocket connection AND fetches initial notifications
+  // This is the single, correct useEffect for managing the WebSocket connection
   useEffect(() => {
-    // Function to fetch historical notifications from the DB
     const fetchNotifications = async () => {
         try {
             const response = await axiosInstance.get(API_PATHS.NOTIFICATIONS.GET_ALL);
@@ -45,14 +45,15 @@ const UserProvider = ({ children }) => {
         }
     };
 
-    let socket;
+    let newSocket;
     if (user) {
-      fetchNotifications(); // Fetch notifications when user logs in
+      fetchNotifications();
 
-      socket = io(BASE_URL);
-      socket.emit('setup', user._id);
-      socket.on('notification', (newNotification) => {
-        // Add new real-time notifications to the top of the list
+      newSocket = io(BASE_URL);
+      newSocket.emit('setup', user._id);
+      setSocket(newSocket); // Store the connection in state
+
+      newSocket.on('notification', (newNotification) => {
         setNotifications(prev => [newNotification, ...prev]);
         toast.success(newNotification.message, { icon: '🔔' });
       });
@@ -60,8 +61,8 @@ const UserProvider = ({ children }) => {
     
     // Cleanup function to disconnect socket when user logs out
     return () => {
-      if (socket) {
-        socket.disconnect();
+      if (newSocket) {
+        newSocket.disconnect();
       }
     };
   }, [user]);
@@ -113,7 +114,8 @@ const UserProvider = ({ children }) => {
         clearUser, 
         notifications, 
         markAllAsRead, 
-        markOneAsRead 
+        markOneAsRead,
+        socket,
       }}
     >
       {children}
