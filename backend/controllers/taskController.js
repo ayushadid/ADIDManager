@@ -289,10 +289,12 @@ const getTasks = async (req, res) => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        if (isOverdue === 'true') {
+                // AFTER (Correct Logic)
+        
+        if (status === 'Overdue') { // Check if the status filter is "Overdue"
             baseFilter.status = { $ne: 'Completed' };
             baseFilter.dueDate = { $lt: today };
-        } else if (status && status !== 'All') {
+        } else if (status && status !== 'All') { // Handle other statuses like "Pending", etc.
             baseFilter.status = status;
         }
 
