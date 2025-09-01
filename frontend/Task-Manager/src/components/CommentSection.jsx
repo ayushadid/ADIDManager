@@ -103,7 +103,7 @@ const CommentSection = ({ taskId, comments = [], onCommentAdded }) => {
                                 <div className={`w-8 flex-shrink-0 ${isMyComment ? 'order-2' : 'order-1'}`}>
                                     {showAvatar && (
                                         <img 
-                                            src={comment.madeBy?.profileImageUrl || `https://ui-avatars.com/api/?name=${comment.madeBy?.name.replace(/\s/g, '+') || 'A'}`} 
+                                            src={`https://ui-avatars.com/api/?name=${(comment.madeBy?.name || '').replace(/\s/g, '+') || 'A'}`} 
                                             alt={comment.madeBy?.name} 
                                             className="w-8 h-8 rounded-full object-cover"
                                         />
