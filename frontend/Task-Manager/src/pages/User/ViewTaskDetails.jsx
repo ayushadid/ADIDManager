@@ -55,7 +55,15 @@ const ViewTaskDetails = () => {
                     API_PATHS.TASKS.UPDATE_TASK_CHECKLIST(id),
                     { todoChecklist: newChecklist }
                 );
-                setTask(response.data.task);
+        console.log("API Response after update:", response.data);
+
+                if (response.data?.task) {
+                setTask(prevTask => ({
+                    ...prevTask,
+                    status: response.data.task.status, // <-- Keeps existing data (comments, assignedTo, etc.)
+                    todoChecklist: response.data.task.todoChecklist, // <-- Only updates what changed
+                }));
+            }
             } catch (error) {
                 console.error("Error updating checklist:", error);
                 const errorMessage = error.response?.data?.message || "Couldn't save progress.";
