@@ -29,8 +29,11 @@ const io = new Server(server, {
 });
 
 // Middleware to handle CORS
-app.use(cors()); // Note: The cors config for socket.io is separate from this one for Express
-
+// Middleware to handle CORS with more specific options
+app.use(cors({
+  origin: "*", // Allows all origins
+  methods: "GET,POST,PUT,DELETE,PATCH,OPTIONS", // Specifies allowed methods
+}));
 // Connect to database
 connectDB();
 
